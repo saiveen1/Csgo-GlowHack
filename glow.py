@@ -44,7 +44,8 @@ def main():
     handle: Pymem = pymem.Pymem("csgo.exe")
     client = pymem.process.module_from_name(handle.process_handle, "client.dll")
     client_module = handle.read_bytes(client.lpBaseOfDll, client.SizeOfImage)
-    local_addr = client.lpBaseOfDll + re.search(rb'\x8b\x35.{4}\x57\x85\xf6\x74\x56', client_module).start() + 2
+    local_ptr_4 = client.lpBaseOfDll + re.search(rb'\x42\x56\x8d\x34\x85.{4}', client_module).start() + 5
+    local_addr = handle.read_uint(local_ptr_4) + 4
     glow_manger_addr = client.lpBaseOfDll + re.search(rb'\x0f\x11\x05.{4}\x83\xc8\x01', client_module).start() + 3
     entity_list_addr = client.lpBaseOfDll + re.search(rb'\x56\x8b\x89.{4}\x85\xc9\x74\x1b', client_module).start() + 3
     glow_index_addr = client.lpBaseOfDll + re.search(rb'\x8B\x7d\xec\x8b\xb3.{4}', client_module).start() + 5
@@ -61,7 +62,7 @@ def main():
     print("Press F1 to show teammates.")
     print("Press F2 to turn the glow on/off.")
     print("Press END to quit.")
-    
+
     try:
         while True:
             glow_manager = handle.read_uint(glow_manager_ptr)
@@ -74,7 +75,7 @@ def main():
                 b_glow = not b_glow
                 print("Glow is " + ("on" if b_glow is True else "close"))
 
-            local_player_ent = handle.read_uint(handle.read_uint(local_addr))
+            local_player_ent = handle.read_uint(local_addr)
             if local_player_ent:
                 local_team = handle.read_uint(local_player_ent + m_team)
                 if b_glow:
