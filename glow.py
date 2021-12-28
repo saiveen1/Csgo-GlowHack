@@ -4,17 +4,8 @@ import re
 from pymem import Pymem
 from win32api import GetAsyncKeyState
 
-exitKey = keymap.VK_END
-show_teammate_button = keymap.VK_F1
-glow_toggle = keymap.VK_F2
-
 
 class ColorRGBA:
-    Red = 0
-    Green = 0
-    Blue = 0
-    Alpha = 0
-
     def __init__(self, r, g, b, a):
         self.Red = r
         self.Green = g
@@ -22,40 +13,50 @@ class ColorRGBA:
         self.Alpha = a
 
 
+exit_hack = keymap.VK_END
+show_teammate = keymap.VK_F1
+glow_toggle = keymap.VK_F2
+enemy_color = ColorRGBA(0, 1, 0, 1)
+teammate_color = ColorRGBA(0, 0, 1, 1)
+
+
 def key_pressed(key):
     return GetAsyncKeyState(key) & 1 == 1
 
 
 def glow(h_game: pymem, red_offset, glow_manager, entity_glow, color: ColorRGBA):
-    h_game.write_float(glow_manager + entity_glow * 0x38 + red_offset, float(color.Red))
-    h_game.write_float(glow_manager + entity_glow * 0x38 + red_offset + 0x4, float(color.Green))
-    h_game.write_float(glow_manager + entity_glow * 0x38 + red_offset + 0x8, float(color.Blue))
-    h_game.write_float(glow_manager + entity_glow * 0x38 + red_offset + 0xc, float(color.Alpha))
-    h_game.write_uchar(glow_manager + entity_glow * 0x38 + red_offset + 0x20, 1)
-    h_game.write_uchar(glow_manager + entity_glow * 0x38 + red_offset + 0x21, 0)
+    w_glow = glow_manager + entity_glow * 0x38 + red_offset
+    h_game.write_float(w_glow, float(color.Red))
+    h_game.write_float(w_glow + 0x4, float(color.Green))
+    h_game.write_float(w_glow + 0x8, float(color.Blue))
+    h_game.write_float(w_glow + 0xc, float(color.Alpha))
+    h_game.write_uchar(w_glow + 0x20, 1)
+    h_game.write_uchar(w_glow + 0x21, 0)
 
 
 def main():
-
     b_glow_teammate = False
     b_glow = True
-    enemy_color = ColorRGBA(0, 1, 0, 1)
-    teammate_color = ColorRGBA(0, 0, 1, 1)
+
     handle: Pymem = pymem.Pymem("csgo.exe")
     client = pymem.process.module_from_name(handle.process_handle, "client.dll")
-    client_module = handle.read_bytes(client.lpBaseOfDll, client.SizeOfImage)
-    local_ptr_4 = client.lpBaseOfDll + re.search(rb'\x42\x56\x8d\x34\x85.{4}', client_module).start() + 5
+    client_base = client.lpBaseOfDll
+    client_module = handle.read_bytes(client_base, client.SizeOfImage)
+
+    # If this part failed, please remind me to update the pattern.
+    # ----------------------------------------------------------------------------------------------
+    loc_entity_list_pattern = re.search(rb'\x42\x56\x8d\x34\x85.{4}', client_module).start()
+    local_ptr_4 = client_base + loc_entity_list_pattern + 5
     local_addr = handle.read_uint(local_ptr_4) + 4
-    glow_manger_addr = client.lpBaseOfDll + re.search(rb'\x0f\x11\x05.{4}\x83\xc8\x01', client_module).start() + 3
-    entity_list_addr = client.lpBaseOfDll + re.search(rb'\x8b\x0d.{4}\xf3\x0f\x11\x45\xf4\x85\xc0',
-                                                      client_module).start() + 2
-    if entity_list_addr == 0:
-        entity_list_addr = client.lpBaseOfDll + re.search(rb'\x8b\x0d.{4}\x85\xc9\x74\x07\x8b\x01\xff\x50\x1c',
-                                                          client_module).start() + 2
-    glow_index_addr = client.lpBaseOfDll + re.search(rb'\x8B\x7d\xec\x8b\xb3.{4}', client_module).start() + 5
-    health_addr = client.lpBaseOfDll + re.search(rb'\x83\xb9.{4}\x00\x7f\x2d\x8b\x01', client_module).start() + 2
-    team_addr = client.lpBaseOfDll + re.search(rb'\xcc\x8b\x89.{4}\xe9.{4}\xcc', client_module).start() + 3
-    glow_red_addr = client.lpBaseOfDll + re.search(rb'\x8b\x00\xf3\x0f\x11\x44\xc8.\xf3\x0f\x10\x44\x24', client_module).start() + 7
+    entity_list_addr = client_base + loc_entity_list_pattern + 0x20 + 1
+
+    glow_manger_addr = client_base + re.search(rb'\x0f\x11\x05.{4}\x83\xc8\x01', client_module).start() + 3
+    glow_index_addr = client_base + re.search(rb'\x8B\x7d\xec\x8b\xb3.{4}', client_module).start() + 5
+    glow_red_addr = client_base + re.search(rb'\x8b\x00\xf3\x0f\x11\x44\xc8.\xf3\x0f\x10\x44\x24', client_module).start() + 7
+
+    health_addr = client_base + re.search(rb'\x83\xb9.{4}\x00\x7f\x2d\x8b\x01', client_module).start() + 2
+    team_addr = client_base + re.search(rb'\xcc\x8b\x89.{4}\xe9.{4}\xcc', client_module).start() + 3
+    # ----------------------------------------------------------------------------------------------
 
     glow_manager_ptr = handle.read_uint(glow_manger_addr)
     entity_list_ptr = handle.read_uint(entity_list_addr)
@@ -70,9 +71,9 @@ def main():
     try:
         while True:
             glow_manager = handle.read_uint(glow_manager_ptr)
-            if key_pressed(exitKey):
+            if key_pressed(exit_hack):
                 break
-            if key_pressed(show_teammate_button):
+            if key_pressed(show_teammate):
                 b_glow_teammate = not b_glow_teammate
                 print("Team glow is " + ("on" if b_glow_teammate is True else "off"))
             if key_pressed(glow_toggle):
@@ -85,7 +86,6 @@ def main():
                 if b_glow:
                     for i in range(1, 32):
                         entity = handle.read_uint(entity_list_ptr + i * 0x10)
-
                         if entity:
                             entity_team = handle.read_uint(entity + m_team)
                             if not b_glow_teammate:
@@ -109,5 +109,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
